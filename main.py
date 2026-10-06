@@ -21,6 +21,41 @@ USER_AGENT = "whatis wiki search/0.1 (https://github.com/Someone68/whatis)"
 PANEL_WIDTH = min(Console().width, 120)
 ru.MAX_WIDTH = PANEL_WIDTH
 
+# stuff that doesnt need to be shown when viewing
+SKIP_SECTIONS = {
+    "See_also",
+    "References",
+    "Notes",
+    "Citations",
+    "Sources",
+    "Bibliography",
+    "Further_reading",
+    "External_links",
+    "Gallery",
+}
+
+# stuff that messes up article viewing
+JUNK = [
+    "style",
+    "link",
+    "meta",
+    "script",
+    "sup.mw-ref",
+    "img",
+    ".hatnote",
+    ".shortdescription",
+    ".mw-empty-elt",
+    ".navbox",
+    ".noprint",
+    ".mw-references-wrap",
+    ".gallery",
+    ".infobox",
+    ".sidebar",
+    ".side-box",
+    ".ambox",
+    "span.Z3988",
+]
+
 # ts some bs i found online and tweaked :sob:
 SENTENCE_END = re.compile(
     r"(?<!\b[A-Z])(?<!\be\.g)(?<!\bi\.e)(?<!\bc)(?<!\bSt)(?<!\bDr)(?<!\bMr)(?<!\bMrs)(?<!\bvs)"
@@ -140,6 +175,39 @@ def search(
     print(table)
 
 
+def extract_content(html, keep_figures=True, strip_attrs=True):
+    soup = BeautifulSoup(html, "html.parser")  # or "html.parser"
+    body = soup.body
+
+    if body is None:
+        return
+    # drop unwanted sections (subsections go with them)
+    sections = [
+        h.find_parent("section")
+        for h in body.find_all("h2")
+        if h.get("id") in SKIP_SECTIONS
+    ]
+    for s in sections:
+        if s is None:
+            continue
+        s.decompose()
+
+    for sel in JUNK:
+        for el in body.select(sel):
+            el.decompose()
+
+    if not keep_figures:
+        for el in body.select("figure"):
+            el.decompose()
+
+    if strip_attrs:  # remove Parsoid noise attributes
+        for tag in body.find_all(True):
+            for a in ("id", "about", "typeof", "data-mw", "rel"):
+                tag.attrs.pop(a, None)
+
+    return body.decode_contents()
+
+
 @app.command(help="View a Wikipedia article using its exact title.")
 def view(
     ctx: typer.Context,
@@ -157,8 +225,11 @@ def view(
             f"[red]Could not find article with title[/red] [bold green]{t}[/bold green]."
         )
         raise typer.Exit(1)
-    in_md = Markdown(md(data))
-    print(in_md)
+
+    extracted_content = extract_content(data)
+    if extracted_content is not None:
+        in_md = Markdown(md(extracted_content))
+        print(in_md)
 
 
 if __name__ == "__main__":
