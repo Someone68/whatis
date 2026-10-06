@@ -1,4 +1,7 @@
 import re
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
@@ -208,6 +211,16 @@ def extract_content(html, keep_figures=True, strip_attrs=True):
     return body.decode_contents()
 
 
+def page(renderable) -> None:
+    less = shutil.which("less")
+    if not less or not console.is_terminal:
+        console.print(renderable)
+        return
+    with console.capture() as cap:
+        console.print(renderable)
+    subprocess.run([less, "-RFX"], input=cap.get(), encoding="utf-8", check=False)
+
+
 @app.command(help="View a Wikipedia article using its exact title.")
 def view(
     ctx: typer.Context,
@@ -228,8 +241,7 @@ def view(
 
     extracted_content = extract_content(data)
     if extracted_content is not None:
-        in_md = Markdown(md(extracted_content))
-        print(in_md)
+        page(Markdown(md(extracted_content)))
 
 
 if __name__ == "__main__":
