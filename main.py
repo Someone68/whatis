@@ -203,6 +203,12 @@ def search(
             + f"\n{result.description}",
         )
     print(table)
+    print(
+        Padding(
+            f"[dim]Run [bold cyan]{app_name} show <number>[/bold cyan] to read an article.[/dim]",
+            (0, 1),
+        )
+    )
 
 
 def extract_content(html, keep_figures=True, strip_attrs=True):
@@ -250,7 +256,6 @@ def page(renderable) -> None:
 
 @app.command(help="View a Wikipedia article using its exact title.")
 def view(
-    ctx: typer.Context,
     title: Annotated[list[str], typer.Argument(help="Article title.")],
 ) -> None:
     t = " ".join(title)
@@ -269,6 +274,27 @@ def view(
     extracted_content = extract_content(data)
     if extracted_content is not None:
         page(Markdown(md(extracted_content)))
+
+
+@app.command(
+    help="Requires running a query command first. Views an article based on its number in the previous query."
+)
+def show(number: Annotated[int, typer.Argument(help="The query number to use.")]):
+    history = load_history()
+    if not history:
+        print("[red]No previous query. Run [bold]what is <query>[/bold] first.[/red]")
+        raise typer.Exit(1)
+    if number not in range(1, len(history[0]["results"]) + 1):
+        print("[red]Specified article number is not in range.[/red]")
+        raise typer.Exit(1)
+    target_title: str = history[0]["results"][number - 1]["title"]
+
+    if type(target_title) is str:
+        view(title=[target_title])
+    else:
+        print(
+            "[red]Error with command history. Your query history file is most likely not valid.[/red]"
+        )
 
 
 if __name__ == "__main__":
