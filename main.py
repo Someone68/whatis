@@ -102,7 +102,14 @@ def search(
                 first_sentence = get_first_sentence(str(res_content.text))
                 results.append(Result(page["title"], first_sentence))
                 continue
-            results.append(Result(page["title"], page["description"]))
+            results.append(
+                Result(
+                    page["title"],
+                    page["description"]
+                    if page["description"]
+                    else "[red]No short description found.[/red]",
+                )
+            )
     print(
         Padding(
             f"Showing [bold cyan]{min(num_results, len(results))}[/bold cyan] results for [bold green]{q}[/bold green]",
