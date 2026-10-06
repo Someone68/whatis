@@ -1,12 +1,15 @@
 import re
 from typing import Annotated
+from urllib.parse import quote
 
 import requests
 import typer
 import typer.rich_utils as ru
 from bs4 import BeautifulSoup
+from markdownify import markdownify as md
 from rich import box, print
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.table import Table
 
@@ -48,8 +51,9 @@ def get_first_sentence(html: str):
     return ""
 
 
-@app.command()
+@app.command("is", help="Search Wikipedia and get a summary.")
 def search(
+    ctx: typer.Context,
     query: Annotated[list[str], typer.Argument(..., help="Search query.")],
     num_results: Annotated[
         int, typer.Option("--num-results", "-n", help="The number of results to show.")
@@ -71,8 +75,9 @@ def search(
         ),
     ] = True,
 ) -> None:
+    app_name = ctx.find_root().info_name
     q = " ".join(query)
-    with console.status("Loading", spinner="dots"):
+    with console.status("Searching", spinner="dots"):
         results = [
             # Result(
             #     "Result 1",
@@ -124,7 +129,7 @@ def search(
     table.add_column()
     for idx, result in enumerate(reversed(results) if bottom_up else results):
         table.add_row(
-            f"[bold yellow]{result.title}[/bold yellow]"
+            f"[blue]{len(results) - idx if bottom_up else idx + 1}. [/blue][bold yellow]{result.title}[/bold yellow]"
             + (
                 " [dim](top result)[/dim]"
                 if idx == (len(results) - 1 if bottom_up else 0)
@@ -133,6 +138,27 @@ def search(
             + f"\n{result.description}",
         )
     print(table)
+
+
+@app.command(help="View a Wikipedia article using its exact title.")
+def view(
+    ctx: typer.Context,
+    title: Annotated[list[str], typer.Argument(help="Article title.")],
+) -> None:
+    t = " ".join(title)
+    with console.status("Searching...", spinner="dots"):
+        res = requests.get(
+            WIKIPEDIA_API + f"page/{quote(t, safe='')}/html",
+            headers={"User-Agent": USER_AGENT},
+        )
+        data = res.text
+    if res.status_code == 404:
+        print(
+            f"[red]Could not find article with title[/red] [bold green]{t}[/bold green]."
+        )
+        raise typer.Exit(1)
+    in_md = Markdown(md(data))
+    print(in_md)
 
 
 if __name__ == "__main__":
