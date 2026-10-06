@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import subprocess
@@ -19,6 +20,8 @@ from rich.table import Table
 app = typer.Typer()
 console = Console()
 
+HISTORY_FILE = Path(typer.get_app_dir("what")) / "history.json"
+HISTORY_LIMIT = 10
 WIKIPEDIA_API = "https://en.wikipedia.org/w/rest.php/v1/"
 USER_AGENT = "whatis wiki search/0.1 (https://github.com/Someone68/whatis)"
 PANEL_WIDTH = min(Console().width, 120)
@@ -89,6 +92,29 @@ def get_first_sentence(html: str):
     return ""
 
 
+def load_history() -> list[dict]:
+    try:
+        data = json.loads(HISTORY_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    return [e for e in data if "query" in e]
+
+
+def add_history(query: str, results: list[Result]) -> None:
+    entries = [e for e in load_history() if e["query"] != query]
+    entries.insert(
+        0,
+        {
+            "query": query,
+            "results": [
+                {"title": r.title, "description": r.description} for r in results
+            ],
+        },
+    )
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    HISTORY_FILE.write_text(json.dumps(entries[:HISTORY_LIMIT], indent=2))
+
+
 @app.command("is", help="Search Wikipedia and get a summary.")
 def search(
     ctx: typer.Context,
@@ -153,6 +179,7 @@ def search(
                     else "[red]No short description found.[/red]",
                 )
             )
+    add_history(q, results)
     print(
         Padding(
             f"Showing [bold cyan]{min(num_results, len(results))}[/bold cyan] results for [bold green]{q}[/bold green]",
