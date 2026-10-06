@@ -1,21 +1,22 @@
-import json
 import re
-import time
 from typing import Annotated
 
 import requests
 import typer
+import typer.rich_utils as ru
 from bs4 import BeautifulSoup
 from rich import box, print
 from rich.console import Console
 from rich.padding import Padding
-from rich.panel import Panel
+from rich.table import Table
 
 app = typer.Typer()
 console = Console()
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/rest.php/v1/"
 USER_AGENT = "whatis wiki search/0.1 (https://github.com/Someone68/whatis)"
+PANEL_WIDTH = min(Console().width, 120)
+ru.MAX_WIDTH = PANEL_WIDTH
 
 # ts some bs i found online and tweaked :sob:
 SENTENCE_END = re.compile(
@@ -49,21 +50,28 @@ def get_first_sentence(html: str):
 
 @app.command()
 def search(
-    query: str,
+    query: Annotated[list[str], typer.Argument(..., help="Search query.")],
     num_results: Annotated[
-        int, typer.Option(help="The number of results to show.")
+        int, typer.Option("--num-results", "-n", help="The number of results to show.")
     ] = 3,
     bottom_up: Annotated[
         bool,
-        typer.Option(help="Whether the most relevant result should be at the bottom."),
+        typer.Option(
+            "--bottom-up/--top-up",
+            "-b",
+            help="Whether the most relevant result should be at the bottom.",
+        ),
     ] = True,
     quick: Annotated[
         bool,
         typer.Option(
-            help="Whether to use a shorter description for results that are not the most relevant. Speeds up search time by around half a second."
+            "--quick/--no-quick",
+            "-q/-w",
+            help="Whether to use a shorter description for results that are not the most relevant. Speeds up search time by around half a second.",
         ),
     ] = True,
 ) -> None:
+    q = " ".join(query)
     with console.status("Loading", spinner="dots"):
         results = [
             # Result(
@@ -79,7 +87,7 @@ def search(
             WIKIPEDIA_API + "search/page",
             headers={"User-Agent": USER_AGENT},
             params={
-                "q": f'{query} -incategory:"All_disambiguation_pages"',
+                "q": f'{q} -incategory:"All_disambiguation_pages"',
                 "limit": num_results,
             },
         )
@@ -97,25 +105,27 @@ def search(
             results.append(Result(page["title"], page["description"]))
     print(
         Padding(
-            f"Showing [bold cyan]{min(num_results, len(results))}[/bold cyan] results for [bold green]{query}[/bold green]",
+            f"Showing [bold cyan]{min(num_results, len(results))}[/bold cyan] results for [bold green]{q}[/bold green]",
             1,
         )
     )
 
+    table = Table(
+        box=box.HORIZONTALS, show_header=False, show_lines=True, width=PANEL_WIDTH
+    )
+
+    table.add_column()
     for idx, result in enumerate(reversed(results) if bottom_up else results):
-        print(
-            Panel(
-                f"[bold yellow]{result.title}[/bold yellow]"
-                + (
-                    " [dim](top result)[/dim]"
-                    if idx == (len(results) - 1 if bottom_up else 0)
-                    else ""
-                )
-                + f"\n{result.description}",
-                box=box.HORIZONTALS,
-                width=min(Console().width, 80),
+        table.add_row(
+            f"[bold yellow]{result.title}[/bold yellow]"
+            + (
+                " [dim](top result)[/dim]"
+                if idx == (len(results) - 1 if bottom_up else 0)
+                else ""
             )
+            + f"\n{result.description}",
         )
+    print(table)
 
 
 if __name__ == "__main__":
